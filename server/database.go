@@ -143,8 +143,9 @@ func (db *Database) migrateWithSchema(name string, schemas []string, verbose boo
 		return fmt.Errorf("%s while doing %s", err.Error(), query)
 	}
 
-	query = fmt.Sprintf("select count(*) from `rdioScannerMeta` where `name` = '%s'", name)
-	if err = db.Sql.QueryRow(query).Scan(&count); err != nil {
+	// Use parameterized query to prevent SQL injection
+	query = "select count(*) from `rdioScannerMeta` where `name` = ?"
+	if err = db.Sql.QueryRow(query, name).Scan(&count); err != nil {
 		return formatError(err, query)
 	}
 
@@ -161,8 +162,9 @@ func (db *Database) migrateWithSchema(name string, schemas []string, verbose boo
 				}
 			}
 
-			query = fmt.Sprintf("insert into `rdioScannerMeta` (`name`) values ('%s')", name)
-			if _, err = tx.Exec(query); err != nil {
+			// Use parameterized query to prevent SQL injection
+			query = "insert into `rdioScannerMeta` (`name`) values (?)"
+			if _, err = tx.Exec(query, name); err != nil {
 				tx.Rollback()
 				return formatError(err, query)
 			}

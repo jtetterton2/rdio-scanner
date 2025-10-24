@@ -132,8 +132,9 @@ func (calls *Calls) CheckDuplicate(call *Call, msTimeFrame uint, db *Database) b
 	from := call.DateTime.Add(-d)
 	to := call.DateTime.Add(d)
 
-	query := fmt.Sprintf("select count(*) from `rdioScannerCalls` where (`dateTime` between '%v' and '%v') and `system` = %v and `talkgroup` = %v", from, to, call.System, call.Talkgroup)
-	if err := db.Sql.QueryRow(query).Scan(&count); err != nil {
+	// Use parameterized query to prevent SQL injection
+	query := "select count(*) from `rdioScannerCalls` where (`dateTime` between ? and ?) and `system` = ? and `talkgroup` = ?"
+	if err := db.Sql.QueryRow(query, from, to, call.System, call.Talkgroup).Scan(&count); err != nil {
 		return false
 	}
 
@@ -158,8 +159,9 @@ func (calls *Calls) GetCall(id uint, db *Database) (*Call, error) {
 
 	call := Call{Id: id}
 
-	query := fmt.Sprintf("select `audio`, `audioName`, `audioType`, `DateTime`, `frequencies`, `frequency`, `patches`, `source`, `sources`, `system`, `talkgroup` from `rdioScannerCalls` where `id` = %v", id)
-	err := db.Sql.QueryRow(query).Scan(&call.Audio, &audioName, &audioType, &dateTime, &frequencies, &frequency, &patches, &source, &sources, &call.System, &call.Talkgroup)
+	// Use parameterized query to prevent SQL injection
+	query := "select `audio`, `audioName`, `audioType`, `DateTime`, `frequencies`, `frequency`, `patches`, `source`, `sources`, `system`, `talkgroup` from `rdioScannerCalls` where `id` = ?"
+	err := db.Sql.QueryRow(query, id).Scan(&call.Audio, &audioName, &audioType, &dateTime, &frequencies, &frequency, &patches, &source, &sources, &call.System, &call.Talkgroup)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("getcall: %v, %v", err, query)
 	}

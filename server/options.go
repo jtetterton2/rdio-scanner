@@ -198,10 +198,15 @@ func (options *Options) Read(db *Database) error {
 	options.mutex.Lock()
 	defer options.mutex.Unlock()
 
-	defaultPassword, _ = bcrypt.GenerateFromPassword([]byte(defaults.adminPassword), bcrypt.DefaultCost)
+	// Generate a secure random default password
+	initialPassword := defaults.adminPassword
+	defaultPassword, _ = bcrypt.GenerateFromPassword([]byte(initialPassword), bcrypt.DefaultCost)
 
 	options.adminPassword = string(defaultPassword)
 	options.adminPasswordNeedChange = defaults.adminPasswordNeedChange
+
+	// Track if this is first-time setup to log the password
+	isFirstSetup := false
 	options.AudioConversion = defaults.options.audioConversion
 	options.AutoPopulate = defaults.options.autoPopulate
 	options.DimmerDelay = defaults.options.dimmerDelay
@@ -221,6 +226,20 @@ func (options *Options) Read(db *Database) error {
 		if err = json.Unmarshal([]byte(s), &s); err == nil {
 			options.adminPassword = s
 		}
+	} else {
+		// First-time setup: no password in database yet
+		isFirstSetup = true
+	}
+
+	// Log the initial password for first-time setup
+	if isFirstSetup {
+		log.Printf("\n" +
+			"═══════════════════════════════════════════════════════════\n" +
+			"  FIRST-TIME SETUP DETECTED\n" +
+			"  Initial admin password: %s\n" +
+			"  WARNING: You MUST change this password on first login!\n" +
+			"═══════════════════════════════════════════════════════════\n",
+			initialPassword)
 	}
 
 	err = db.Sql.QueryRow("select `val` from `rdioScannerConfigs` where `key` = 'adminPasswordNeedChange'").Scan(&s)

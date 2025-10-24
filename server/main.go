@@ -22,6 +22,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -129,7 +130,34 @@ func main() {
 		if strings.EqualFold(r.Header.Get("upgrade"), "websocket") {
 			upgrader := websocket.Upgrader{
 				CheckOrigin: func(r *http.Request) bool {
-					return true
+					// Validate WebSocket origin to prevent CSRF attacks
+					origin := r.Header.Get("Origin")
+					if origin == "" {
+						// Allow requests without Origin header (non-browser clients)
+						return true
+					}
+
+					// Parse the origin URL
+					originURL, err := url.Parse(origin)
+					if err != nil {
+						return false
+					}
+
+					// Allow same-origin requests
+					if originURL.Host == r.Host {
+						return true
+					}
+
+					// Allow localhost for development (both IPv4 and IPv6)
+					if strings.HasPrefix(originURL.Host, "localhost:") ||
+					   strings.HasPrefix(originURL.Host, "127.0.0.1:") ||
+					   strings.HasPrefix(originURL.Host, "[::1]:") {
+						return true
+					}
+
+					// TODO: Add support for configured trusted origins in options
+					// For now, reject all other origins
+					return false
 				},
 				ReadBufferSize:  1024,
 				WriteBufferSize: 1024,

@@ -15,6 +15,12 @@
 
 package main
 
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"log"
+)
+
 type Defaults struct {
 	adminPassword           string
 	adminPasswordNeedChange bool
@@ -66,8 +72,19 @@ type DefaultOptions struct {
 	time12hFormat               bool
 }
 
+// generateSecurePassword generates a cryptographically secure random password
+func generateSecurePassword() string {
+	// Generate 16 random bytes (128 bits of entropy)
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		log.Fatal("Failed to generate secure random password:", err)
+	}
+	// Encode to base64 for a readable password (22 characters)
+	return base64.URLEncoding.EncodeToString(bytes)[:22]
+}
+
 var defaults Defaults = Defaults{
-	adminPassword:           "rdio-scanner",
+	adminPassword:           generateSecurePassword(),
 	adminPasswordNeedChange: true,
 	access: DefaultAccess{
 		ident:   "Unknown",

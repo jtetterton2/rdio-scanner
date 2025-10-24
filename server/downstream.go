@@ -502,14 +502,16 @@ func (downstreams *Downstreams) Write(db *Database) error {
 	}
 
 	if len(rowIds) > 0 {
-		if b, err := json.Marshal(rowIds); err == nil {
-			s := string(b)
-			s = strings.ReplaceAll(s, "[", "(")
-			s = strings.ReplaceAll(s, "]", ")")
-			q := fmt.Sprintf("delete from `rdioScannerDownstreams` where `_id` in %v", s)
-			if _, err = db.Sql.Exec(q); err != nil {
-				return formatError(err)
-			}
+		// Build parameterized IN clause to prevent SQL injection
+		placeholders := make([]string, len(rowIds))
+		args := make([]any, len(rowIds))
+		for i, id := range rowIds {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		q := fmt.Sprintf("delete from `rdioScannerDownstreams` where `_id` in (%s)", strings.Join(placeholders, ","))
+		if _, err = db.Sql.Exec(q, args...); err != nil {
+			return formatError(err)
 		}
 	}
 
