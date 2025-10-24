@@ -67,13 +67,67 @@ cd rdio-scanner
 # Build the Docker image using the included Containerfile
 docker build -t rdio-scanner:latest -f Containerfile .
 
-# This will:
-# - Build the Angular frontend
-# - Build the Go backend
-# - Create a minimal Alpine-based image (~50MB)
+# This uses a multi-stage build process:
+# Stage 1: Build Angular frontend with Node.js 18
+# Stage 2: Build Go backend with Go 1.22
+# Stage 3: Create minimal Alpine-based runtime image (~50MB)
 ```
 
-### 5. Create Data Directory
+#### Understanding the Multi-Stage Build
+
+The Containerfile uses a **multi-stage build** approach with three distinct stages:
+
+**Stage 1: Frontend Builder**
+- Uses Node.js 18 Alpine image
+- Installs npm dependencies
+- Builds the Angular application
+- Output: Compiled frontend assets
+
+**Stage 2: Backend Builder**
+- Uses Go 1.22 Alpine image
+- Copies frontend assets from Stage 1
+- Compiles the Go backend with optimizations
+- Creates a static binary (no external dependencies)
+
+**Stage 3: Runtime Image**
+- Uses minimal Alpine Linux base
+- Copies only the compiled binary from Stage 2
+- Installs runtime dependencies only (ffmpeg, timezone data)
+- No build tools or source code included
+
+**Benefits:**
+- **Security**: No build tools in production image
+- **Size**: Final image ~50MB (vs 500MB+ with build tools)
+- **Speed**: Layer caching speeds up rebuilds
+- **Clarity**: Clear separation of concerns
+
+### 5. Verify Build Success
+
+After the build completes, verify the multi-stage build worked correctly:
+
+```bash
+# Check the image size (should be ~50-80MB)
+docker images rdio-scanner:latest
+
+# Inspect the image layers
+docker history rdio-scanner:latest
+
+# Verify the image only contains runtime files (no build tools)
+docker run --rm rdio-scanner:latest sh -c "which node || echo 'Node.js not found (good!)'"
+docker run --rm rdio-scanner:latest sh -c "which go || echo 'Go not found (good!)'"
+docker run --rm rdio-scanner:latest sh -c "which ffmpeg && echo 'ffmpeg found (good!)'"
+
+# List contents of the image
+docker run --rm rdio-scanner:latest ls -lh /app/
+```
+
+**Expected output:**
+- Image size: 50-80MB (not 500MB+)
+- No `node` or `go` commands found
+- `ffmpeg` available
+- `/app/rdio-scanner` binary present
+
+### 6. Create Data Directory
 
 ```bash
 # Create a directory for persistent data
@@ -83,7 +137,7 @@ mkdir -p /opt/rdio-scanner-data
 chmod 755 /opt/rdio-scanner-data
 ```
 
-### 6. Run the Container
+### 7. Run the Container
 
 ```bash
 # Run the container
@@ -101,7 +155,7 @@ docker ps
 docker logs rdio-scanner
 ```
 
-### 7. Get Initial Admin Password
+### 8. Get Initial Admin Password
 
 ```bash
 # View logs to find the initial password
@@ -117,7 +171,7 @@ docker logs rdio-scanner 2>&1 | grep -A 3 "FIRST-TIME SETUP"
 # Save this password!
 ```
 
-### 8. Access the Application
+### 9. Access the Application
 
 ```bash
 # The app should now be running at:
@@ -463,7 +517,110 @@ docker stats rdio-scanner
 
 ---
 
+## Docker Build Optimization
+
+### Leveraging Build Cache
+
+The multi-stage build is optimized for Docker's layer caching:
+
+```bash
+# First build (slower - downloads dependencies)
+docker build -t rdio-scanner:latest -f Containerfile .
+
+# Subsequent builds (faster - uses cached layers)
+# Only rebuilds if source files changed
+docker build -t rdio-scanner:latest -f Containerfile .
+```
+
+### Build Arguments and Customization
+
+```bash
+# Build with custom tags
+docker build -t rdio-scanner:v6.6.3 -t rdio-scanner:latest -f Containerfile .
+
+# Build without cache (clean build)
+docker build --no-cache -t rdio-scanner:latest -f Containerfile .
+
+# Build with progress output
+docker build --progress=plain -t rdio-scanner:latest -f Containerfile .
+```
+
+### Inspecting Build Stages
+
+```bash
+# View all build stages
+docker build --target frontend-builder -t rdio-scanner:frontend -f Containerfile .
+docker build --target backend-builder -t rdio-scanner:backend -f Containerfile .
+
+# Inspect intermediate images
+docker images | grep rdio-scanner
+```
+
+### Multi-Architecture Builds
+
+```bash
+# Build for multiple architectures (requires buildx)
+docker buildx build \
+  --platform linux/amd64,linux/arm64,linux/arm/v7 \
+  -t rdio-scanner:latest \
+  -f Containerfile \
+  --push .
+```
+
+---
+
 ## Troubleshooting
+
+### Build Issues
+
+#### Frontend Build Fails
+
+```bash
+# Check Node.js version compatibility
+docker run --rm node:18-alpine node --version
+
+# Build only the frontend stage to debug
+docker build --target frontend-builder -t rdio-scanner:frontend -f Containerfile .
+
+# Check the output
+docker run --rm -it rdio-scanner:frontend ls -la /build/server/webapp/
+```
+
+**Common causes:**
+- Network issues downloading npm packages
+- Incompatible Node.js version
+- Angular configuration errors
+
+#### Backend Build Fails
+
+```bash
+# Build only the backend stage to debug
+docker build --target backend-builder -t rdio-scanner:backend -f Containerfile .
+
+# Check Go version
+docker run --rm golang:1.22-alpine go version
+
+# Verify frontend assets were copied
+docker run --rm -it rdio-scanner:backend ls -la /build/webapp/
+```
+
+**Common causes:**
+- Missing frontend assets from Stage 1
+- Go module download failures
+- Missing dependencies
+
+#### Build Cache Issues
+
+```bash
+# Force a clean build without cache
+docker build --no-cache -t rdio-scanner:latest -f Containerfile .
+
+# Remove dangling images
+docker image prune -f
+
+# Remove all build cache
+docker builder prune -a -f
+```
 
 ### Container Won't Start
 
